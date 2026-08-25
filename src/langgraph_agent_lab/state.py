@@ -55,7 +55,6 @@ class AgentState(TypedDict, total=False):
     risk_level: str
     attempt: int
     max_attempts: int
-    final_answer: str | None
     evaluation_result: str | None
     pending_question: str | None
     proposed_action: str | None
