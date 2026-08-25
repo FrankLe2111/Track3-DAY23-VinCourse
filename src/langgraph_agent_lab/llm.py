@@ -12,6 +12,27 @@ Usage in nodes:
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+try:
+    from dotenv import find_dotenv, load_dotenv
+except ImportError:  # pragma: no cover - optional when environment variables are already exported
+    find_dotenv = None
+    load_dotenv = None
+
+
+def _load_environment() -> None:
+    """Load .env from cwd first, then from the repository root."""
+    if load_dotenv is None:
+        return
+    dotenv_path = find_dotenv(usecwd=True) if find_dotenv is not None else ""
+    if not dotenv_path:
+        # llm.py -> langgraph_agent_lab -> src -> repository root
+        repo_env = Path(__file__).resolve().parents[2] / ".env"
+        if repo_env.is_file():
+            dotenv_path = str(repo_env)
+    if dotenv_path:
+        load_dotenv(dotenv_path=dotenv_path, override=False)
 
 
 def get_llm(model: str | None = None, temperature: float = 0.0):
@@ -24,6 +45,8 @@ def get_llm(model: str | None = None, temperature: float = 0.0):
 
     Override model with the `model` parameter or LLM_MODEL env var.
     """
+    _load_environment()
+
     if os.getenv("GEMINI_API_KEY"):
         try:
             from langchain_google_genai import ChatGoogleGenerativeAI
@@ -56,6 +79,6 @@ def get_llm(model: str | None = None, temperature: float = 0.0):
         )
 
     raise RuntimeError(
-        "No LLM API key found. Set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY in .env\n"
-        "See .env.example for configuration."
+        "No LLM API key found. Set GEMINI_API_KEY, OPENAI_API_KEY, or ANTHROPIC_API_KEY in .env. "
+        f"Current working directory: {Path.cwd()}"
     )

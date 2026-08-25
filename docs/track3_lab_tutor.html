@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Track 3 Lab Tutor — LangGraph Agentic Orchestration</title>
+  <style>
+    :root{--ink:#172235;--muted:#5d6b7d;--paper:#fbfcfe;--card:#fff;--line:#dbe3ee;--blue:#2563eb;--cyan:#0891b2;--green:#15803d;--amber:#b45309;--red:#b91c1c;--code:#111827}
+    *{box-sizing:border-box} html{scroll-behavior:smooth} body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.65 system-ui,-apple-system,"Segoe UI",sans-serif}
+    header{background:linear-gradient(135deg,#13233e,#1d4e89 62%,#0e7490);color:white;padding:58px max(22px,calc((100% - 1160px)/2)) 46px} header p{max-width:780px;color:#d9e9ff;font-size:1.08rem} h1{font-size:clamp(2rem,5vw,3.5rem);line-height:1.08;margin:0 0 16px} h2{margin-top:50px;border-bottom:2px solid var(--line);padding-bottom:8px} h3{margin-top:28px;color:#1e3a61} main{max-width:1160px;margin:auto;padding:0 22px 60px}.toc{margin-top:-25px;background:var(--card);border:1px solid var(--line);border-radius:16px;padding:18px 24px;box-shadow:0 8px 26px #0f274012}.toc a{color:var(--blue);margin-right:18px;text-decoration:none}.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:16px}.card{background:var(--card);border:1px solid var(--line);border-radius:13px;padding:18px;box-shadow:0 3px 12px #17304b09}.card strong{display:block;font-size:1.1rem;margin-bottom:5px}.tag{display:inline-block;border-radius:999px;padding:2px 10px;font-size:.8rem;background:#e8f0ff;color:#1d4ed8;margin:2px}.warn{border-left:5px solid #f59e0b;background:#fff8e7;padding:13px 17px;border-radius:8px}.good{border-left:5px solid #16a34a;background:#effcf3;padding:13px 17px;border-radius:8px}.danger{border-left:5px solid #dc2626;background:#fff1f2;padding:13px 17px;border-radius:8px} code{background:#edf2f7;border-radius:4px;padding:2px 5px;color:#9f1239} pre{background:var(--code);color:#e5eefc;padding:16px;border-radius:10px;overflow:auto;line-height:1.5} table{width:100%;border-collapse:collapse;background:white;margin:14px 0 22px} th,td{text-align:left;border:1px solid var(--line);padding:9px;vertical-align:top} th{background:#eff6ff;color:#183b68}.flow{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:18px 0}.node{background:#e8f2ff;border:1px solid #93c5fd;border-radius:9px;padding:8px 12px;font-weight:600}.arrow{color:var(--cyan);font-size:1.4rem}.checklist label{display:block;padding:8px 0}.checklist input{accent-color:var(--green);margin-right:9px}.small{color:var(--muted);font-size:.92rem}.two{columns:2;column-gap:30px}@media(max-width:700px){.two{columns:1} header{padding-top:38px}}
+    .graphbox{background:#0f172a;border-radius:16px;padding:20px;color:#dbeafe;overflow:auto}.graphbox svg{min-width:780px;width:100%;height:370px}.graphbox .g-node{fill:#1e3a8a;stroke:#60a5fa;stroke-width:2}.graphbox text{fill:#eff6ff;font:600 13px system-ui}.graphbox .g-edge{stroke:#67e8f9;stroke-width:2;fill:none;marker-end:url(#arrow)}.graphbox .g-edge.retry{stroke:#fbbf24;stroke-dasharray:7 6}.graphbox .g-edge.risky{stroke:#fb7185}.graphbox .traveler{fill:#fef08a;filter:drop-shadow(0 0 5px #fde047);animation:travel 5s linear infinite}.graphbox .traveler.two{animation-delay:2.5s}@keyframes travel{0%{transform:translate(100px,55px);opacity:0}10%{opacity:1}50%{transform:translate(390px,55px);opacity:1}90%{transform:translate(680px,55px);opacity:1}100%{transform:translate(720px,55px);opacity:0}}.pulse{animation:pulse 1.8s ease-in-out infinite}@keyframes pulse{50%{box-shadow:0 0 0 8px #38bdf833}}
+  </style>
+</head>
+<body>
+<header>
+  <h1>Track 3 Lab Tutor</h1>
+  <p>LangGraph Agentic Orchestration — sổ tay học và triển khai một support-ticket agent có state, routing, retry, human-in-the-loop, persistence và metrics.</p>
+  <p class="small">Tài liệu này được viết trực tiếp từ codebase hiện tại. Các TODO chính của lab đã được hoàn thiện; phần dưới giải thích implementation và cách kiểm chứng.</p>
+</header>
+<main>
+  <nav class="toc"><b>Mục lục:</b> <a href="#map">Bản đồ lab</a><a href="#concepts">Kiến thức</a><a href="#flow">Luồng graph</a><a href="#steps">Step by step</a><a href="#tests">Kiểm thử</a><a href="#rubric">Chấm điểm</a></nav>
+
+  <section id="map"><h2>1. Bài toán và bản đồ codebase</h2>
+    <p>Bạn đang xây một agent xử lý câu hỏi hỗ trợ. Agent không chỉ gọi LLM một lần: nó phải <b>phân loại ý định</b>, chọn nhánh, gọi tool mô phỏng, đánh giá kết quả, retry có giới hạn, xin phê duyệt cho hành động rủi ro và ghi audit trail.</p>
+    <div class="grid">
+      <div class="card"><strong>State</strong><code>src/.../state.py</code><br>Schema dữ liệu đi qua mọi node; các list audit dùng reducer append.</div>
+      <div class="card"><strong>Nodes</strong><code>src/.../nodes.py</code><br>Logic từng bước: intake, classify, tool, evaluate, answer, approval...</div>
+      <div class="card"><strong>Routing + Graph</strong><code>routing.py</code> và <code>graph.py</code><br>Quyết định cạnh conditional và đăng ký toàn bộ node.</div>
+      <div class="card"><strong>CLI + dữ liệu</strong><code>cli.py</code>, <code>scenarios.py</code>, <code>data/sample/scenarios.jsonl</code><br>Chạy scenario và sinh metrics.</div>
+      <div class="card"><strong>Persistence</strong><code>persistence.py</code><br>Memory có sẵn; SQLite là extension bắt buộc nên làm để có điểm persistence.</div>
+      <div class="card"><strong>Metrics + report</strong><code>metrics.py</code>, <code>report.py</code><br>Đo route, retry, HITL, node count; xuất báo cáo markdown.</div>
+    </div>
+    <div class="danger"><b>Luật quan trọng:</b> không route bằng cách match cứng scenario ID hoặc keyword-only. <code>classify_node</code> phải gọi LLM thật với structured output; <code>answer_node</code> phải gọi LLM để tạo câu trả lời grounded. Hidden scenarios sẽ kiểm tra điều này.</div>
+  </section>
+
+  <section id="concepts"><h2>2. Kiến thức cần nắm</h2>
+    <h3>LangGraph khác gì một chain tuyến tính?</h3>
+    <p>Chain thường là A → B → C. LangGraph là state machine: node đọc state và trả về một phần state; graph merge phần trả về bằng reducer; conditional edge chọn nhánh dựa trên state. Vì vậy graph biểu diễn tốt retry loop, approval và nhiều đường kết thúc.</p>
+    <h3>State và reducer</h3>
+    <table><tr><th>Nhóm</th><th>Ví dụ</th><th>Cách merge</th><th>Ý nghĩa</th></tr>
+      <tr><td>Overwrite</td><td><code>route</code>, <code>attempt</code>, <code>final_answer</code></td><td>Giá trị mới thay giá trị cũ</td><td>Trạng thái hiện tại</td></tr>
+      <tr><td>Append-only</td><td><code>messages</code>, <code>tool_results</code>, <code>errors</code>, <code>events</code></td><td><code>Annotated[list, add]</code></td><td>Lịch sử hội thoại, tool và audit; không làm mất bằng chứng retry</td></tr>
+      <tr><td>Structured</td><td><code>approval</code>, classification</td><td>Dict/Pydantic serializable</td><td>Dễ checkpoint và kiểm thử</td></tr>
+    </table>
+    <p><b>Nguyên tắc node:</b> không mutate input state; chỉ return partial update. Mọi node nên ghi một <code>make_event(...)</code> để metrics biết node nào đã chạy.</p>
+    <h3>Structured output</h3>
+    <p>Tạo Pydantic model cho classification, ví dụ route chỉ nhận một trong năm giá trị <code>simple | tool | missing_info | risky | error</code>. Gọi <code>get_llm().with_structured_output(Model).invoke(prompt)</code>. Prompt phải nêu định nghĩa route và thứ tự ưu tiên: <b>risky &gt; tool &gt; missing_info &gt; error &gt; simple</b>.</p>
+    <h3>Retry và termination</h3>
+    <p><code>evaluate</code> là gate: nếu kết quả mới nhất chứa lỗi thì <code>needs_retry</code>, ngược lại <code>success</code>. <code>retry</code> tăng <code>attempt</code>; nếu <code>attempt &lt; max_attempts</code> quay lại tool, nếu không đi dead letter. Đây là rào chắn bắt buộc để graph không loop vô hạn.</p>
+    <h3>HITL và persistence</h3>
+    <p>Nhánh risky phải tạo <code>proposed_action</code> rồi chạy <code>approval</code> trước khi tool thực hiện side effect. Bản cơ bản mock <code>approved=True</code> để CI chạy; extension dùng <code>interrupt()</code>. Checkpointer lưu state theo <code>thread_id</code>, cho phép xem lịch sử hoặc resume sau sự cố.</p>
+  </section>
+
+  <section id="flow"><h2>3. Luồng graph mục tiêu</h2>
+    <div class="graphbox" aria-label="Animated LangGraph flow diagram">
+      <svg viewBox="0 0 900 370" role="img">
+        <defs><marker id="arrow" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#67e8f9"/></marker></defs>
+        <path class="g-edge" d="M70 55 H190 M250 55 H370 M430 55 H550 M610 55 H770"/>
+        <path class="g-edge" d="M400 82 V155 H250 V205"/><path class="g-edge risky" d="M400 82 V245 H250 V295"/>
+        <path class="g-edge retry" d="M580 82 V155 H760 V205 M760 235 V315 H580 V82"/><path class="g-edge" d="M640 55 V245 H770"/>
+        <g><rect class="g-node" x="15" y="30" width="110" height="50" rx="12"/><text x="70" y="60" text-anchor="middle">START</text></g>
+        <g><rect class="g-node" x="190" y="30" width="110" height="50" rx="12"/><text x="245" y="60" text-anchor="middle">intake</text></g>
+        <g><rect class="g-node pulse" x="370" y="30" width="110" height="50" rx="12"/><text x="425" y="60" text-anchor="middle">classify</text></g>
+        <g><rect class="g-node" x="550" y="30" width="110" height="50" rx="12"/><text x="605" y="60" text-anchor="middle">answer</text></g>
+        <g><rect class="g-node" x="770" y="30" width="110" height="50" rx="12"/><text x="825" y="60" text-anchor="middle">finalize</text></g>
+        <g><rect class="g-node" x="195" y="180" width="110" height="50" rx="12"/><text x="250" y="210" text-anchor="middle">clarify</text></g>
+        <g><rect class="g-node" x="195" y="270" width="110" height="50" rx="12"/><text x="250" y="300" text-anchor="middle">approval</text></g>
+        <g><rect class="g-node" x="705" y="180" width="110" height="50" rx="12"/><text x="760" y="210" text-anchor="middle">tool/evaluate</text></g>
+        <g><circle class="traveler" cx="0" cy="0" r="7"/><circle class="traveler two" cx="0" cy="0" r="7"/></g>
+        <text x="15" y="355" fill="#fbbf24">vàng = retry loop</text><text x="160" y="355" fill="#fb7185">đỏ = risky/HITL</text><text x="330" y="355">chấm sáng = state đang di chuyển</text>
+      </svg>
+    </div>
+    <p class="small">Sơ đồ trực quan hóa logic trong <code>graph.py</code>; conditional edges có path map tường minh để Mermaid và runtime cùng phản ánh các nhánh.</p>
+    <div class="flow"><span class="node">START</span><span class="arrow">→</span><span class="node">intake</span><span class="arrow">→</span><span class="node">classify</span><span class="arrow">→</span><span class="node">route</span></div>
+    <table><tr><th>Route</th><th>Luồng</th><th>Kết quả phải có</th></tr>
+      <tr><td><span class="tag">simple</span></td><td>answer → finalize → END</td><td>LLM answer</td></tr>
+      <tr><td><span class="tag">tool</span></td><td>tool → evaluate → answer → finalize</td><td>tool result + grounded answer</td></tr>
+      <tr><td><span class="tag">missing_info</span></td><td>clarify → finalize</td><td>pending question, không bịa</td></tr>
+      <tr><td><span class="tag">risky</span></td><td>risky_action → approval → tool → evaluate → answer → finalize</td><td>approval được ghi nhận</td></tr>
+      <tr><td><span class="tag">error</span></td><td>retry → tool → evaluate → retry... hoặc dead_letter → finalize</td><td>retry bounded; S07 chết ở dead letter</td></tr>
+    </table>
+    <div class="warn"><b>Điểm dễ nhầm:</b> S07 có <code>expected_route=error</code>, nhưng kết thúc thực tế ở nhánh dead-letter sau khi retry hết hạn. Route intent vẫn là <code>error</code>; câu trả lời cuối phải giải thích không thể hoàn tất.</div>
+  </section>
+
+  <section id="implementation"><h2>4. Implementation đã hoàn thiện</h2>
+    <table><tr><th>Module</th><th>Implementation</th><th>Cách chứng minh</th></tr>
+      <tr><td><code>state.py</code></td><td>Thêm evaluation, clarification, proposed action, approval; list audit append-only</td><td><code>test_state.py</code></td></tr>
+      <tr><td><code>nodes.py</code></td><td>LLM structured classification, grounded answer, mock tool, retry, HITL interrupt</td><td>smoke tests + events</td></tr>
+      <tr><td><code>routing.py</code></td><td>4 conditional routing function, bounded attempt guard</td><td><code>test_routing.py</code></td></tr>
+      <tr><td><code>graph.py</code></td><td>11 node, fixed edges, conditional path maps, finalize → END</td><td><code>get_graph().draw_mermaid()</code></td></tr>
+      <tr><td><code>persistence.py</code></td><td>MemorySaver và SQLite WAL với <code>SqliteSaver</code></td><td>checkpointer type / history</td></tr>
+      <tr><td><code>report.py</code></td><td>Summary, scenario table, architecture, failures, improvement plan</td><td><code>reports/lab_report.md</code></td></tr>
+    </table>
+  </section>
+
+  <section id="steps"><h2>5. Hướng dẫn triển khai từng bước</h2>
+    <h3>Bước 0 — Cài môi trường</h3>
+    <pre>python -m venv .venv
+# Windows PowerShell:
+.venv\Scripts\Activate.ps1
+pip install -e ".[dev]"
+pip install -e ".[google]"   # hoặc [openai], [anthropic]
+# đặt GEMINI_API_KEY / OPENAI_API_KEY / ANTHROPIC_API_KEY trong .env</pre>
+    <p>Factory trong <code>llm.py</code> chọn Gemini trước, sau đó OpenAI, rồi Anthropic; model có thể override bằng <code>LLM_MODEL</code>.</p>
+    <h3>Bước 1 — Hoàn thiện state.py</h3>
+    <p>Thêm các field mà node/routing sẽ đọc: <code>evaluation_result</code>, <code>pending_question</code>, <code>proposed_action</code>, <code>approval</code>. Khởi tạo chúng trong <code>initial_state</code> nếu muốn state rõ ràng. Giữ mọi giá trị serializable; <code>ApprovalDecision</code> có thể dump thành dict khi trả về.</p>
+    <h3>Bước 2 — Viết nodes.py theo hợp đồng</h3>
+    <ol>
+      <li><b>classify:</b> gọi LLM structured output; ghi <code>route</code>, <code>risk_level</code>, event. Không dùng scenario ID.</li>
+      <li><b>tool:</b> lấy <code>attempt</code>. Với route error và attempt &lt; 2, append chuỗi có <code>ERROR</code>; các trường hợp khác append mock success.</li>
+      <li><b>evaluate:</b> đọc result cuối; set <code>needs_retry</code> nếu lỗi, ngược lại <code>success</code>. Có thể nâng điểm bằng LLM-as-judge.</li>
+      <li><b>answer:</b> gọi LLM với query, tool_results, approval; yêu cầu chỉ dùng context được cung cấp.</li>
+      <li><b>clarify:</b> tạo câu hỏi cụ thể và gán cả <code>pending_question</code> lẫn <code>final_answer</code>.</li>
+      <li><b>risky_action:</b> mô tả hành động và lý do cần reviewer.</li>
+      <li><b>approval:</b> mock approved mặc định; nếu bật interrupt thì pause và resume bằng quyết định reviewer.</li>
+      <li><b>retry:</b> tăng attempt đúng một lần, append error/event.</li>
+      <li><b>dead_letter:</b> thông báo không thể xử lý sau max attempts.</li>
+      <li><b>finalize:</b> luôn append event <code>finalize/completed</code>.</li>
+    </ol>
+    <h3>Bước 3 — Hoàn thiện routing.py</h3>
+    <p>Dùng mapping rõ ràng cho classify; evaluate chỉ cần phân biệt <code>needs_retry</code>; retry so sánh số nguyên; approval đọc <code>approval.approved</code>. Unknown route mặc định sang answer theo test có sẵn.</p>
+    <h3>Bước 4 — Dựng graph.py</h3>
+    <p>Tạo <code>StateGraph(AgentState)</code>, register đủ 11 node, thêm fixed edges và <code>add_conditional_edges</code> cho 4 hàm routing. Compile bằng <code>graph.compile(checkpointer=checkpointer)</code>. Kiểm tra mọi nhánh đều tới finalize rồi END.</p>
+    <h3>Bước 5 — Persistence</h3>
+    <p>MemorySaver đủ để chạy test. Để làm extension, cài <code>langgraph-checkpoint-sqlite</code>, tạo SQLite connection, bật WAL và dùng <code>SqliteSaver(conn=...)</code>. CLI đã truyền <code>thread_id</code> qua <code>configurable</code>; hãy ghi lại state history hoặc demo restart/resume.</p>
+    <h3>Bước 6 — Metrics và report</h3>
+    <p><code>metric_from_state</code> đếm event node, retry, approval và kiểm tra route + output. <code>summarize_metrics</code> tạo <code>MetricsReport</code>. Implement <code>render_report</code> theo template: summary, từng scenario, kiến trúc, failure analysis và improvement plan.</p>
+  </section>
+
+  <section id="tests"><h2>6. Chạy và tự kiểm tra</h2>
+    <pre>make test
+make lint
+make typecheck
+make run-scenarios
+make grade-local</pre>
+    <p>CLI tương đương:</p><pre>python -m langgraph_agent_lab.cli run-scenarios --config configs/lab.yaml --output outputs/metrics.json
+python -m langgraph_agent_lab.cli validate-metrics --metrics outputs/metrics.json</pre>
+    <h3>Checklist debug theo thứ tự</h3>
+    <div class="checklist">
+      <label><input type="checkbox">State có đủ 4 field bổ sung và reducer đúng?</label>
+      <label><input type="checkbox">Mỗi node trả partial state, không mutate input, có event?</label>
+      <label><input type="checkbox">classify dùng structured LLM; answer dùng grounded LLM?</label>
+      <label><input type="checkbox">Retry tăng attempt và luôn có dead-letter guard?</label>
+      <label><input type="checkbox">Risky không thể chạy tool trước approval?</label>
+      <label><input type="checkbox">Mọi route có finalize event?</label>
+      <label><input type="checkbox">metrics.json có ít nhất 6 scenario và schema hợp lệ?</label>
+      <label><input type="checkbox">reports/lab_report.md có số liệu và phân tích failure?</label>
+    </div>
+    <div class="two"><div><h3>Lỗi thường gặp</h3><ul><li>Không có API key hoặc thiếu package provider.</li><li>LLM trả route ngoài enum vì prompt/model không structured.</li><li>Reducer overwrite events khiến metrics đếm thiếu node.</li><li>Nhầm attempt: kiểm tra giới hạn sau khi tăng.</li></ul></div><div><h3>Cách kiểm tra hành vi</h3><ul><li>simple: reset password</li><li>tool: order status</li><li>missing: “Can you fix it?”</li><li>risky: refund/delete account</li><li>error: timeout; S07 phải dead-letter</li></ul></div></div>
+  </section>
+
+  <section id="rubric"><h2>7. Mục tiêu điểm và sản phẩm nộp</h2>
+    <table><tr><th>Hạng mục</th><th>Điểm</th><th>Bằng chứng cần chuẩn bị</th></tr>
+      <tr><td>State + architecture</td><td>15</td><td>Typed state, reducer, field lean/serializable</td></tr><tr><td>Graph wiring</td><td>15</td><td>Nodes, edges, conditional routes, compile</td></tr><tr><td>LLM</td><td>15</td><td>Structured classify + grounded answer</td></tr><tr><td>Behavior</td><td>20</td><td>Routes, bounded retry, HITL, termination</td></tr><tr><td>Persistence</td><td>10</td><td>checkpointer, thread_id, history/resume</td></tr><tr><td>Metrics/tests</td><td>15</td><td>metrics.json, tests, scenario coverage</td></tr><tr><td>Report/demo</td><td>10</td><td>kiến trúc, metrics, failure, cải tiến</td></tr>
+    </table>
+    <div class="good"><b>Định nghĩa hoàn thành:</b> tất cả TODO chính đã xong; <code>make test</code>, <code>make run-scenarios</code>, <code>make grade-local</code> chạy được; có report; bạn giải thích được ít nhất một route, một retry loop và một failure mode. Muốn 90+ nên thêm SQLite, real HITL, time travel, fan-out hoặc graph diagram.</div>
+  </section>
+  <footer class="small">Nguồn nội dung: README.md, docs/LAB_GUIDE.md, docs/RUBRIC.md, docs/METRICS.md và toàn bộ package/tests/config/data của lab.</footer>
+</main>
+</body>
+</html>
