@@ -1,63 +1,15 @@
-"""Markdown report generation from a completed metrics run."""
-
-from __future__ import annotations
-
-from pathlib import Path
-
-from .metrics import MetricsReport
-
-
-def render_report(metrics: MetricsReport, diagram: str | None = None) -> str:
-    """Render a complete lab report from metrics data.
-
-    The report includes:
-    1. Metrics summary table (total scenarios, success rate, retries, interrupts)
-    2. Per-scenario results table
-    3. Architecture explanation (your graph design, state schema, reducers)
-    4. Failure analysis (at least two failure modes you considered)
-    5. Persistence / recovery evidence
-    6. LLM integration
-    7. Extensions (bonus)
-    8. Improvement plan
-
-    Use reports/lab_report_template.md as your guide.
-
-    Return: formatted markdown string
-    """
-    diagram_block = f"```mermaid\n{diagram}\n```" if diagram else "(run `diagram` to export)"
-    def cell(value: object) -> str:
-        return str(value).replace("|", "\\|").replace("\n", " ")
-
-    rows = "\n".join(
-        "| {scenario} | {expected} | {actual} | {success} | {retries} | {interrupts} |"
-        .format(
-            scenario=cell(item.scenario_id),
-            expected=cell(item.expected_route),
-            actual=cell(item.actual_route or ""),
-            success="✅" if item.success else "❌",
-            retries=item.retry_count,
-            interrupts=item.interrupt_count,
-        )
-        for item in metrics.scenario_metrics
-    )
-    error_rows = "\n".join(
-        f"- **{cell(item.scenario_id)}**: "
-        f"{cell('; '.join(item.errors) or 'Không có lỗi ghi nhận.')}"
-        for item in metrics.scenario_metrics
-        if item.errors
-    ) or "- Không có lỗi được ghi nhận trong metrics."
-    return f"""# Day 08 Lab Report
+# Day 08 Lab Report
 
 ## 1. Summary
 
 | Metric | Value |
 |---|---:|
-| Total scenarios | {metrics.total_scenarios} |
-| Success rate | {metrics.success_rate:.1%} |
-| Average nodes visited | {metrics.avg_nodes_visited:.2f} |
-| Total retries | {metrics.total_retries} |
-| Total interrupts | {metrics.total_interrupts} |
-| Resume/state-history evidence | {'Yes' if metrics.resume_success else 'No'} |
+| Total scenarios | 7 |
+| Success rate | 100.0% |
+| Average nodes visited | 6.43 |
+| Total retries | 3 |
+| Total interrupts | 2 |
+| Resume/state-history evidence | Yes |
 
 ## 2. Architecture
 
@@ -79,7 +31,13 @@ fields such as `route`, `attempt`, `evaluation_result`, `approval`, and
 
 | Scenario | Expected route | Actual route | Success | Retries | Interrupts |
 |---|---|---|---:|---:|---:|
-{rows}
+| S01_simple | simple | simple | ✅ | 0 | 0 |
+| S02_tool | tool | tool | ✅ | 0 | 0 |
+| S03_missing | missing_info | missing_info | ✅ | 0 | 0 |
+| S04_risky | risky | risky | ✅ | 0 | 1 |
+| S05_error | error | error | ✅ | 2 | 0 |
+| S06_delete | risky | risky | ✅ | 0 | 1 |
+| S07_dead_letter | error | error | ✅ | 1 | 0 |
 
 ## 4. Failure analysis
 
@@ -93,7 +51,8 @@ fields such as `route`, `attempt`, `evaluation_result`, `approval`, and
 
 Recorded errors:
 
-{error_rows}
+- **S05_error**: retry 1/3: classified or transient failure; retry 2/3: ERROR: transient tool failure on attempt 1
+- **S07_dead_letter**: retry 1/1: classified or transient failure
 
 ## 5. Persistence / recovery evidence
 
@@ -126,7 +85,50 @@ Three bonus extensions are implemented and evidenced:
 3. **Graph diagram export.** `python -m langgraph_agent_lab.cli diagram` renders
    the compiled graph to Mermaid (`outputs/graph_diagram.md`):
 
-{diagram_block}
+```mermaid
+---
+config:
+  flowchart:
+    curve: linear
+---
+graph TD;
+	__start__([<p>__start__</p>]):::first
+	intake(intake)
+	classify(classify)
+	tool(tool)
+	evaluate(evaluate)
+	answer(answer)
+	clarify(clarify)
+	risky_action(risky_action)
+	approval(approval)
+	retry(retry)
+	dead_letter(dead_letter)
+	finalize(finalize)
+	__end__([<p>__end__</p>]):::last
+	__start__ --> intake;
+	answer --> finalize;
+	approval -.-> clarify;
+	approval -.-> tool;
+	clarify --> finalize;
+	classify -.-> answer;
+	classify -.-> clarify;
+	classify -.-> retry;
+	classify -.-> risky_action;
+	classify -.-> tool;
+	dead_letter --> finalize;
+	evaluate -.-> answer;
+	evaluate -.-> retry;
+	intake --> classify;
+	retry -.-> dead_letter;
+	retry -.-> tool;
+	risky_action --> approval;
+	tool --> evaluate;
+	finalize --> __end__;
+	classDef default fill:#f2f0ff,line-height:1.2
+	classDef first fill-opacity:0
+	classDef last fill:#bfb6fc
+
+```
 
 ## 8. Improvement plan
 
@@ -134,13 +136,3 @@ Three bonus extensions are implemented and evidenced:
 - Persist approval decisions and add reviewer identity/audit retention controls.
 - Add evaluator traces, token/cost metrics, and hidden-scenario regression tests.
 - Use real interrupt/resume UI for human approval in production.
-"""
-
-
-def write_report(
-    metrics: MetricsReport, output_path: str | Path, diagram: str | None = None
-) -> None:
-    """Write the rendered report to a file."""
-    path = Path(output_path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(render_report(metrics, diagram=diagram), encoding="utf-8")

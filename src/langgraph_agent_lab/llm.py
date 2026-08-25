@@ -12,21 +12,41 @@ Usage in nodes:
 from __future__ import annotations
 
 import os
+from pathlib import Path
+
+from dotenv import load_dotenv
+
+DEFAULT_MODEL = "gpt-5.6-sol"
 
 
 def get_llm(model: str | None = None, temperature: float = 0.0):
     """Create an LLM client from environment configuration.
 
     Checks for API keys in this order:
-    1. GEMINI_API_KEY → ChatGoogleGenerativeAI
-    2. OPENAI_API_KEY → ChatOpenAI
+    1. OPENAI_API_KEY → ChatOpenAI
+    2. GEMINI_API_KEY → ChatGoogleGenerativeAI
     3. ANTHROPIC_API_KEY → ChatAnthropic
 
     Override model with the `model` parameter or LLM_MODEL env var.
     """
+    load_dotenv(dotenv_path=Path.cwd() / ".env")
+
+    if os.getenv("OPENAI_API_KEY"):
+        try:
+            from langchain_openai import ChatOpenAI
+        except ImportError as exc:
+            raise RuntimeError("Install: pip install langchain-openai") from exc
+        model_name = model or os.getenv("LLM_MODEL") or DEFAULT_MODEL
+        return ChatOpenAI(
+            model=model_name,
+            temperature=temperature,
+        )
+
     if os.getenv("GEMINI_API_KEY"):
         try:
-            from langchain_google_genai import ChatGoogleGenerativeAI
+            from langchain_google_genai import (  # type: ignore[import-not-found]
+                ChatGoogleGenerativeAI,
+            )
         except ImportError as exc:
             raise RuntimeError("Install: pip install langchain-google-genai") from exc
         return ChatGoogleGenerativeAI(
@@ -35,19 +55,9 @@ def get_llm(model: str | None = None, temperature: float = 0.0):
             temperature=temperature,
         )
 
-    if os.getenv("OPENAI_API_KEY"):
-        try:
-            from langchain_openai import ChatOpenAI
-        except ImportError as exc:
-            raise RuntimeError("Install: pip install langchain-openai") from exc
-        return ChatOpenAI(
-            model=model or os.getenv("LLM_MODEL", "gpt-4o-mini"),
-            temperature=temperature,
-        )
-
     if os.getenv("ANTHROPIC_API_KEY"):
         try:
-            from langchain_anthropic import ChatAnthropic
+            from langchain_anthropic import ChatAnthropic  # type: ignore[import-not-found]
         except ImportError as exc:
             raise RuntimeError("Install: pip install langchain-anthropic") from exc
         return ChatAnthropic(
